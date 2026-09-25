@@ -73,7 +73,7 @@
   }
   function beginRound(s) { s.phase='production'; s.rolls=[rand(s,6)+1,rand(s,6)+1]; s.productionChoices=[]; s.productionRollIndex=0; resolveProduction(s); }
   function beginTurn(s) { s.phase='market'; s.active=s.order[s.turnIndex]; s.current=s.active; s.actionsLeft=2; s.bankTrades=0; s.expanded=false; s.challenged=false; s.offer=null; s.pendingChallenge=null; s.lastChallenge=null; }
-  function endTurn(s) { const p=active(s); if(score(s,p.id)>=18 && families(p)===3) s.finalRound=true; s.turnIndex++; if(s.turnIndex===s.order.length) { if(s.finalRound||s.round===10) { s.phase='finished'; s.current=null; s.active=null; return; } s.round++; s.startIndex=(s.startIndex+1)%s.players.length; s.order=s.players.slice(s.startIndex).concat(s.players.slice(0,s.startIndex)).map(p=>p.id); s.turnIndex=0; beginRound(s); } else beginTurn(s); }
+  function endTurn(s) { const p=active(s); if(score(s,p.id)>=18 && families(p)===3) s.finalRound=true; s.turnIndex++; if(s.turnIndex===s.order.length) { if(s.finalRound||s.round===12) { s.phase='finished'; s.current=null; s.active=null; return; } s.round++; s.startIndex=(s.startIndex+1)%s.players.length; s.order=s.players.slice(s.startIndex).concat(s.players.slice(0,s.startIndex)).map(p=>p.id); s.turnIndex=0; beginRound(s); } else beginTurn(s); }
   function createGame(config,board,cards) {
     check(config && Number.isInteger(config.humans) && Number.isInteger(config.bots) && [3,4].includes(config.humans+config.bots),'Se necesitan 3 o 4 empresas');
     check(Array.isArray(board)&&board.length===19&&new Set(board.map(h=>h.id)).size===19&&board.every(h=>Number.isInteger(h.q)&&Number.isInteger(h.r)&&R.includes(h.type))&&new Set(board.map(h=>`${h.q},${h.r}`)).size===19,'Tablero inválido');
