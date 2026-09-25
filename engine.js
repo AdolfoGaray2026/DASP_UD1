@@ -57,6 +57,8 @@
   function chooseCard(s,family) { if(!s.decks[family].length) { check(s.discards[family].length>0,'Mazo vacío'); s.decks[family]=shuffle(s,s.discards[family].splice(0)); } return s.decks[family].pop(); }
   function score(s,id) { const one=p=>p.centers.length+2*p.completed.length; return id===undefined ? Object.fromEntries(s.players.map(p=>[p.id,one(p)])) : one(player(s,id)); }
   function families(p) { return new Set(p.completed.map(id=>id[0])).size; }
+  // La capacidad de la red limita cuántos proyectos se pueden sostener.
+  function requiredCenters(p) { return p.completed.length>=5?4:p.completed.length>=3?3:2; }
   function winner(s) { if(s.phase!=='finished') return []; let a=s.players.slice(); const full=a.filter(p=>families(p)===3); if(full.length) a=full; else { const max=Math.max(...a.map(families)); a=a.filter(p=>families(p)===max); } const points=Math.max(...a.map(p=>score(s,p.id))); a=a.filter(p=>score(s,p.id)===points); const min=Math.min(...a.map(p=>Number(!!p.pending))); return a.filter(p=>Number(!!p.pending)===min).map(p=>p.id); }
   // Se resuelve el primer dado por completo antes del segundo, incluso si sale 6.
   function resolveProduction(s) {
@@ -96,7 +98,7 @@
     }
     if(s.phase==='actions') {
       if(s.pendingChallenge) { for(const answer of ['A','B','C']) a.push({type:'answer',answer}); a.push({type:'timeout'}); }
-      else { a.push({type:'endTurn'}); if(s.actionsLeft) { for(const resource of R) a.push({type:'gather',resource}); if(!s.expanded&&p.centers.length<5&&enough(p,{F:1,D:1,I:1})) for(const h of s.board) if(!s.players.some(x=>x.centers.includes(h.id))) for(const from of p.centers) if(adjacent(hex(s,from),h)) a.push({type:'expand',hex:h.id,from}); if(!s.challenged) for(const pr of projects) if(!p.completed.includes(pr.id)&&(!p.pending||p.pending.family===pr.family)&&enough(p,pr.cost)&&(p.pending||s.decks[pr.family].length||s.discards[pr.family].length)) a.push({type:'project',project:pr.id}); } }
+      else { a.push({type:'endTurn'}); if(s.actionsLeft) { for(const resource of R) a.push({type:'gather',resource}); if(!s.expanded&&p.centers.length<5&&enough(p,{F:1,D:1,I:1})) for(const h of s.board) if(!s.players.some(x=>x.centers.includes(h.id))) for(const from of p.centers) if(adjacent(hex(s,from),h)) a.push({type:'expand',hex:h.id,from}); if(!s.challenged&&p.centers.length>=requiredCenters(p)) for(const pr of projects) if(!p.completed.includes(pr.id)&&(!p.pending||p.pending.family===pr.family)&&enough(p,pr.cost)&&(p.pending||s.decks[pr.family].length||s.discards[pr.family].length)) a.push({type:'project',project:pr.id}); } }
     }
     return {phase:s.phase,current:s.current,actions:a};
   }
@@ -129,7 +131,7 @@
     check(s.actionsLeft>0,'Sin acciones');
     if(t==='gather') { check(R.includes(action.resource),'Recurso inválido'); add(p,action.resource,1); s.actionsLeft--; return s; }
     if(t==='expand') { check(!s.expanded&&p.centers.length<5&&enough(p,{F:1,D:1,I:1})&&hex(s,action.hex)&&p.centers.includes(action.from)&&adjacent(hex(s,action.from),hex(s,action.hex))&&!s.players.some(x=>x.centers.includes(action.hex)),'Expansión ilegal'); deduct(p,{F:1,D:1,I:1}); p.centers.push(action.hex); p.links.push([action.from,action.hex]); s.expanded=true; s.actionsLeft--; return s; }
-    if(t==='project') { const pr=projects.find(x=>x.id===action.project); check(pr&&!s.challenged&&!p.completed.includes(pr.id)&&enough(p,pr.cost)&&(!p.pending||p.pending.family===pr.family),'Proyecto ilegal'); check(!p.pending||p.pending.failedRound<s.round||p.pending.failedTurn!==s.turnIndex,'Reintento en mismo turno'); const retry=!!p.pending, id=retry?p.pending.cardId:chooseCard(s,pr.family), c=card(s,id); s.pendingChallenge={cardId:id,project:pr.id,family:pr.family,retry,idea:retry?null:c.idea,question:c.question,options:c.options.slice()}; s.challenged=true; s.actionsLeft--; return s; }
+    if(t==='project') { const pr=projects.find(x=>x.id===action.project); check(pr&&!s.challenged&&p.centers.length>=requiredCenters(p)&&!p.completed.includes(pr.id)&&enough(p,pr.cost)&&(!p.pending||p.pending.family===pr.family),'Proyecto ilegal: amplía tu red o revisa los recursos'); check(!p.pending||p.pending.failedRound<s.round||p.pending.failedTurn!==s.turnIndex,'Reintento en mismo turno'); const retry=!!p.pending, id=retry?p.pending.cardId:chooseCard(s,pr.family), c=card(s,id); s.pendingChallenge={cardId:id,project:pr.id,family:pr.family,retry,idea:retry?null:c.idea,question:c.question,options:c.options.slice()}; s.challenged=true; s.actionsLeft--; return s; }
     fail('Acción ilegal');
   }
   function botTurn(state) {
@@ -150,7 +152,7 @@
     }
     return s;
   }
-  function needed(p) { const targets=p.pending?projects.find(x=>x.family===p.pending.family&&!p.completed.includes(x.id)):projects.find(x=>!p.completed.some(id=>id[0]===x.family)&&!p.completed.includes(x.id))||projects.find(x=>!p.completed.includes(x.id)); const cost=targets?targets.cost:{F:1,D:1,I:1}; return R.find(r=>p.resources[r]<(cost[r]||0))||R.reduce((best,r)=>p.resources[r]<p.resources[best]?r:best,'F'); }
+  function needed(p) { const targets=p.pending?projects.find(x=>x.family===p.pending.family&&!p.completed.includes(x.id)):projects.find(x=>!p.completed.some(id=>id[0]===x.family)&&!p.completed.includes(x.id))||projects.find(x=>!p.completed.includes(x.id)); const cost=p.centers.length<requiredCenters(p)?{F:1,D:1,I:1}:targets?targets.cost:{F:1,D:1,I:1}; return R.find(r=>p.resources[r]<(cost[r]||0))||R.reduce((best,r)=>p.resources[r]<p.resources[best]?r:best,'F'); }
   const api={createGame,legal,apply,botTurn,score,winner,projects};
   if(typeof module==='object'&&module.exports) module.exports=api;
   if(root) root.ConectaEngine=api;
